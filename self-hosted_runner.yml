@@ -1,0 +1,269 @@
+---
+- name: System setup, package installation, and GitHub runner setup
+  hosts: ansible
+
+  tasks:
+
+    - name: Ensure GnuPG is installed
+      apt:
+        name: gnupg
+        state: present
+
+    - name: Install Ansible from Debian repositories
+      apt:
+        name: ansible
+        state: present
+
+    - name: Update apt cache and upgrade packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+        force_apt_get: yes
+
+
+    - name: Install required packages
+      apt:
+        name:
+          - qemu-guest-agent
+          - swaks
+          - curl
+          - net-tools
+          - software-properties-common
+          - git
+        state: present
+
+    - name: Install Ansible and Python pip
+      apt:
+        name:
+          - ansible
+          - python3-pip
+        state: present
+
+
+    - name: Create GitHub runner user
+      user:
+        name: runner
+        shell: /bin/bash
+        home: /home/runner
+        groups: sudo
+        append: yes
+        state: present
+
+    
+    - name: Create ssh dir for runner
+      ansible.builtin.file:
+        path: /home/runner/.ssh
+        state: directory
+        owner: runner
+        group: runner
+        mode: '0755' 
+      ignore_errors: true  
+
+    - name: Create /ansible directory
+      ansible.builtin.file:
+        path: /ansible
+        state: directory
+        owner: runner
+        group: runner
+        mode: '0755'
+
+
+    - name: Deploy private SSH key
+      become: yes
+      become_user: runner
+      copy:
+        src: /etc/ansible/ssh/ghkey
+        dest: ~/.ssh/ghkey
+        mode: '0600'
+    
+    - name: Configure SSH for GitHub
+      become: yes
+      become_user: runner
+      lineinfile:
+        path: ~/.ssh/config
+        state: present
+        create: yes
+        line: |
+          Host *
+            StrictHostKeyChecking no
+            UserKnownHostsFile=/dev/null
+          Host github.com
+            HostName github.com
+            User git
+            IdentityFile ~/.ssh/ghkey
+            IdentitiesOnly yes
+
+    - name: Ensure correct permissions for SSH config
+      become: yes
+      become_user: runner
+      file:
+        path: ~/.ssh/config
+        mode: '0644'
+    
+    - name: Clone GitHub repository with SSH
+      become: yes
+      become_user: runner
+      shell: |
+        eval "$(ssh-agent -s)" &&
+        ssh-add ~/.ssh/ghkey &&
+        git clone "{{ github_repo_ssh}}" /ansible
+      args:
+        chdir: /home/runner
+      environment:
+        PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+
+    - name: Move all files except the source directory itself
+      become: yes
+      become_user: runner
+      shell: |
+        mv /ansible/IT-Firmwares/* /ansible/ 2>/dev/null || true
+        mv /ansible/IT-Firmwares/.[!.]* /ansible/ 2>/dev/null  || true
+        rm -rf /ansible/IT-Firmwares/
+
+
+
+    - name: Create actions-runner directory
+      ansible.builtin.file:
+        path: /home/runner/actions-runner
+        state: directory
+        owner: runner
+        group: runner
+        mode: '0755'
+
+    - name: Download GitHub Actions runner
+      become: yes
+      become_user: runner
+      shell: |
+        curl -L -o /home/runner/actions-runner/actions-runner.tar.gz \
+        https://github.com/actions/runner/releases/download/v2.321.0/actions-runner-linux-x64-2.321.0.tar.gz
+      args:
+        creates: /home/runner/actions-runner/actions-runner.tar.gz
+      environment:
+        PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+
+    - name: Extract GitHub Actions runner archive
+      ansible.builtin.unarchive:
+        src: "/home/runner/actions-runner/actions-runner.tar.gz"
+        dest: "/home/runner/actions-runner"
+        remote_src: yes
+      
+    - name: Prompt a token for github runner
+      pause:
+        prompt: "PLEASE PROMT A TOKEN FOR THE SELF-HOSTED RUNNER"
+      register: prompted_token
+      no_log: true
+
+    - name: Set the user_email
+      set_fact: 
+        github_token: "{{ prompted_token.user_input }}"
+      no_log: true      
+
+    - name: Configure GitHub Actions runner
+      become: yes
+      become_user: runner
+      shell: |
+        cd /home/runner/actions-runner &&
+        ./config.sh \
+          --url {{ github_repo_https }} \
+          --token {{ github_token }} \
+          --runnergroup "Default" \
+          --name "{{ runner }}" \
+          --work _work \
+          --unattended \
+          --replace
+      args:
+        chdir: /home/runner/actions-runner
+
+    - name: Create GitHub runner systemd service file
+      copy:
+        dest: /etc/systemd/system/github-runner.service
+        content: |
+          [Unit]
+          Description=GitHub Actions Runner
+          After=network.target
+
+          [Service]
+          User=runner
+          WorkingDirectory=/home/runner/actions-runner
+          ExecStart=/home/runner/actions-runner/run.sh
+          Restart=always
+          RestartSec=5
+          Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+          Environment=DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
+          Environment=DOTNET_NOLOGO=1
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd and enable GitHub runner service
+      systemd:
+        daemon_reload: yes
+        name: github-runner.service
+        enabled: yes
+        state: started
+
+
+    - name: Deploy private SSH key
+      become: yes
+      become_user: runner
+      copy:
+        src: /etc/ansible/ssh/aruba
+        dest: ~/.ssh/aruba
+        mode: '0600'
+
+    - name: Copy hosts and ansible-credentials.yml
+      become: yes
+      become_user: runner
+      copy:
+        src: /etc/ansible/files2copy/hosts
+        dest: /ansible/
+      with_fileglob:
+        - /etc/ansible/files2copy/*
+      ignore_errors: true 
+
+   #installig ansible collections on behalf of runner user
+    - name: Set global pip config to allow break-system-packages
+      become: yes
+      become_user: runner
+      command: python3 -m pip config set global.break-system-packages true
+
+    - name: Install Aruba Networks AOSCX collection via Ansible Galaxy
+      become: yes
+      become_user: runner
+      ansible.builtin.command: ansible-galaxy collection install arubanetworks.aoscx
+
+    - name: Get collection path dynamically
+      become: yes
+      become_user: runner
+      shell: |
+        ansible-galaxy collection list | grep -E '^#.*\.ansible' | sed 's/\# //'
+      register: collection_path
+      changed_when: false
+
+    - name: Change directory to collection path and install dependencies
+      become: yes
+      become_user: runner
+      shell: |
+        cd "{{ collection_path.stdout }}/arubanetworks/aoscx" && \:wq
+        ansible-galaxy install -r requirements.yml
+      args:
+        chdir: "{{ collection_path.stdout }}/arubanetworks/aoscx"
+
+    - name: Install Python dependencies from requirements.txt
+      become: yes
+      become_user: runner
+      shell: |
+        cd "{{ collection_path.stdout }}/arubanetworks/aoscx" && \
+        python3 -m pip install -r requirements.txt
+      args:
+        chdir: "{{ collection_path.stdout }}/arubanetworks/aoscx"
+
+    - name: Ensure cron job for apt update and upgrade is present
+      ansible.builtin.cron:
+        name: "Apt update and upgrade"
+        minute: "0"
+        hour: "2"
+        job: "/usr/bin/apt update && /usr/bin/apt upgrade -y"
+        user: "root"
