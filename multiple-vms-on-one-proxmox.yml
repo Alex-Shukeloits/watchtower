@@ -1,0 +1,187 @@
+---
+- name: Setup Debian Cloud VM on Proxmox
+  hosts: proxmox_server
+  become: true
+  vars_files: /etc/ansible/secret_vars.yml ##############root password for a new vm and netbird setup key, file should be encrypted with ansible vault
+  vars:
+    image_url: "https://cloud.debian.org/images/cloud/bookworm-backports/latest/debian-12-backports-generic-amd64.qcow2"
+    image_path: "/var/lib/vz/template/images/debian-12-backports-generic-amd64.qcow2"
+
+  tasks:
+    - name: Set host-specific variables
+      set_fact:
+        vm_id: "{{ hostvars[inventory_hostname]['vm_id'] }}"
+        vm_name: "{{ hostvars[inventory_hostname]['vm_name'] }}"
+        ip_addr: "{{ hostvars[inventory_hostname]['ip_addr'] }}"
+
+    - name: Check if directory exists
+      ansible.builtin.stat:
+        path: /var/lib/vz/template/images
+      register: image_dir
+
+    - name: creating a dir for download
+      shell: mkdir /var/lib/vz/template/images/
+      when: not image_dir.stat.exists
+      
+    - name: Check if image already exists
+      stat:
+        path: "{{ image_path }}"
+          # delegate_to: "{{ ansible_host }}"
+      run_once: true
+      register: image_file
+     
+    - name: Download Debian Cloud Image if not present
+      get_url:
+        url: "{{ image_url }}"
+        dest: "{{ image_path }}"
+        mode: '0644'
+      when: not image_file.stat.exists
+        #delegate_to: "{{ ansible_host }}"
+      run_once: true
+    
+
+    - name: Create VM
+      command: >
+        qm create {{ vm_id }} --name "{{ vm_name }}" --ostype l26 --cpu host --socket 1
+        --cores 2 --memory 2048 --machine q35 --net0 virtio,bridge={{ interface }},tag={{ vlan_tag }}
+        --serial0 socket --agent 1
+      register: create_vm
+      failed_when: create_vm.rc != 0
+
+    - name: Install libguestfs-tools
+      apt:
+        name: libguestfs-tools
+        state: present
+      register: install_tools
+      failed_when: install_tools is failed
+     
+    - name: Copy base image to temporary VM-specific path
+      command: >
+        cp {{ image_path }} /var/lib/vz/template/images/{{ vm_name }}.qcow2
+      register: copy_image
+    
+
+    - name: Customize Image
+      command: >
+        virt-customize -a /var/lib/vz/template/images/{{ vm_name }}.qcow2
+        --run-command 'rm -rf /var/lib/apt/lists/*'
+        --run-command 'apt-get update'
+        --install qemu-guest-agent,rsync,net-tools
+
+    - name: Import Disk
+      command: qm importdisk {{ vm_id }} /var/lib/vz/template/images/{{ vm_name }}.qcow2 local-lvm
+
+
+    - name: Set VM SCSI Hardware
+      command: qm set {{ vm_id }} --scsihw virtio-scsi-pci
+      register: set_scsihw
+      failed_when: set_scsihw.rc != 0
+
+    - name: Set VM Disk
+      command: qm set {{ vm_id }} --scsi0 local-lvm:vm-{{ vm_id }}-disk-0,discard=on
+      register: set_disk
+      failed_when: set_disk.rc != 0
+
+    - name: Resize VM Disk
+      command: qm resize {{ vm_id }} scsi0 10G
+      register: resize_disk
+      failed_when: resize_disk.rc != 0
+
+    - name: Set Cloud-Init IDE
+      command: qm set {{ vm_id }} --ide2 local-lvm:cloudinit
+      register: set_ide
+      failed_when: set_ide.rc != 0
+
+    - name: Set Boot Options
+      command: qm set {{ vm_id }} --boot order=scsi0 --bootdisk scsi0
+      register: set_boot
+      failed_when: set_boot.rc != 0
+
+    - name: Set Cloud-Init User
+      command: qm set {{ vm_id }} --ciuser root
+      register: set_ciuser
+      failed_when: set_ciuser.rc != 0
+
+    - name: Set Cloud-Init Password
+      command: qm set {{ vm_id }} --cipassword {{ root_password }}
+      register: set_cipassword
+      failed_when: set_cipassword.rc != 0
+
+    - name: Enable Cloud-Init Upgrade
+      command: qm set {{ vm_id }} --ciupgrade=1
+      register: set_ciupgrade
+      failed_when: set_ciupgrade.rc != 0
+
+    - name: Set Cloud-Init IP Config
+      command: qm set {{ vm_id }} --ipconfig0 ip={{ ip_addr }}/24,gw={{ gateway }}
+      register: set_ipconfig
+      failed_when: set_ipconfig.rc != 0
+
+    - name: Set Nameserver
+      command: qm set {{ vm_id }} --nameserver 8.8.8.8
+      register: set_nameserver
+      failed_when: set_nameserver.rc != 0
+
+    - name: Update Cloud-Init
+      command: qm cloudinit update {{ vm_id }}
+      register: update_cloudinit
+      failed_when: update_cloudinit.rc != 0
+
+    - name: Upload ssh pubkey 
+      command: qm set {{ vm_id }} --sshkey ~/.ssh/id_rsa.pub
+
+    - name: Show VM Config
+      command: qm config {{ vm_id }}
+
+############ AFTER VM IS CREATED ################
+
+
+    - name: Start the VM
+      command: qm start {{ vm_id }}
+      register: start_vm
+      failed_when: start_vm.rc != 0
+  
+    - name: Pause for 60 seconds to let the VM boot up
+      ansible.builtin.pause:
+        seconds: 60
+      register: pause_result
+    
+    - name: Run command on the VM via QEMU Guest Agent to install Netbird
+      command: qm guest exec {{ vm_id }}  -- /bin/bash -c "/usr/bin/curl -fsSL https://pkgs.netbird.io/install.sh | sh"
+      register: guest_command_output
+      failed_when: guest_command_output.rc != 0
+
+    - name: Run command on the VM via QEMU Guest Agent to create Netbird Peer
+      command: qm guest exec {{ vm_id }} -- /bin/bash -c "/usr/bin/netbird up -k {{ setup_key }}"
+      register: guest_command_output
+      failed_when: guest_command_output.rc != 0
+
+    - name: Run command on the VM via QEMU Guest Agent to check Netbird Status
+      command: qm guest exec {{ vm_id }} -- /bin/bash -c "/usr/bin/netbird  status"
+      register: guest_command_output
+      failed_when: guest_command_output.rc != 0
+
+    - name: Print the output of Netbird Status and IP address of the interface
+      debug:
+        msg: "{{ guest_command_output.stdout }}"
+
+          ### ADJUSTING SSH SETTINGS ###
+
+    - name: Enable password authentication
+      command: qm guest exec {{ vm_id }} -- /bin/bash -c "echo 'PasswordAuthentication yes' > /etc/ssh/sshd_config.d/60-cloudimg-settings.conf "
+      register: guest_command_output
+      failed_when: guest_command_output.rc != 0
+
+    - name: Enable root login
+      command: qm guest exec {{ vm_id }} -- /bin/bash -c "echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config.d/60-cloudimg-settings.conf "
+      register: guest_command_output
+      failed_when: guest_command_output.rc != 0
+
+    - name: Enable root login
+      command: qm guest exec {{ vm_id }} -- /bin/bash -c "systemctl restart sshd "
+      register: guest_command_output
+      failed_when: guest_command_output.rc != 0
+
+    - name: Print the output of Netbird Status and IP address of the interface
+      debug:
+        msg: "{{ guest_command_output.stdout }}"
