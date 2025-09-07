@@ -1,0 +1,65 @@
+[ansible]
+#ipoh ansible_host=100.111.147.155
+#HQ ansible_host=100.111.69.147
+#minsk ansible_host=192.168.99.84 ansible_password=itadmin123
+#lbn ansible_host=100.111.78.39 
+#mlk ansible_host=100.111.128.94
+#sgp ansible_host=100.111.97.247
+#ssl ansible_host=100.111.202.218
+#dby ansible_host=100.111.126.19
+#jlt ansible_host=100.111.179.52
+#rw ansible_host=100.111.170.53
+#jo ansible_host=100.111.180.61
+#asu ansible_host=100.111.80.251
+#cde ansible_host=100.111.175.119
+#cde ansible_host=192.168.86.199
+#mt ansible_host=100.111.24.179
+#sn ansible_host=100.111.107.168
+#limassol ansible_host=100.111.192.195
+nicosia ansible_host=100.111.34.176
+
+[ansible:vars]
+ansible_user=root 
+ansible_ssh_private_key_file=/root/.ssh/semaphore
+#ansible_ssh_common_args= '-o ProxyJump=aleks@100.111.41.172'
+github_repo_ssh=git@github.com:regentmarkets/IT-Firmwares.git
+github_repo_https=https://github.com/regentmarkets/IT-Firmwares
+runner=cy-lim-runner
+
+
+
+[proxmox_server]
+#proxmox-py ansible_host=100.111.125.125
+#proxmox-cde ansible_host=100.111.41.172
+#proxmox-by ansible_host=192.168.99.201
+#proxmox-mt ansible_host=100.111.114.226
+#cyl-lim ansible_host=100.111.194.6
+sandbox-asu-vm1 ansible_host=100.111.183.174 ip_addr=192.168.85.12 vm_id=830 vm_name=bulk-deploy1
+sandbox-asu-vm2 ansible_host=100.111.183.174 ip_addr=192.168.85.13 vm_id=831 vm_name=bulk-deploy2
+
+[proxmox_server:vars]
+#ip_addr=192.168.78.199
+gateway=192.168.78.254
+vlan_tag=20 
+interface=vmbr0 
+ram=4096
+disk_size=20G
+vm_name=cy-lim-runner 
+vm_id=150
+ansible_user=root 
+ansible_ssh_private_key_file=/root/.ssh/semaphore 
+
+[zabbix-proxy]
+hk ansible_host=100.111.157.5 
+iph ansible_host=100.111.95.166
+ssl ansible_host=100.111.238.208 
+lbn ansible_host=100.111.124.220
+mlk ansible_host=100.111.100.4
+asu ansible_host=100.111.86.130
+sgp ansible_host=100.111.20.38
+jo ansible_host=100.111.20.56
+cde ansible_host=100.111.189.48
+
+[zabbix-proxy:vars]
+ansible_user=root
+ansible_ssh_private_key_file=/root/.ssh/fromali/proxy
