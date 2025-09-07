@@ -2,32 +2,39 @@
 - name: Setup Debian Cloud VM on Proxmox
   hosts: proxmox_server
   become: true
-  vars_files: /etc/ansible/secret_vars.yml ##############root password for a new vm and netbird setup key, file should be encrypted with ansible vault
+  vars_files: /etc/ansible/secret_vars.yml
   vars:
     image_url: "https://cloud.debian.org/images/cloud/bookworm-backports/latest/debian-12-backports-generic-amd64.qcow2"
-    image_path: "/var/lib/vz/template/images/debian-12-backports-generic-amd64.qcow2"
+    download_dir: "/var/lib/vz/template/images/"
+    image: "{{ image_url.split('/')[-1] }}"
 
   tasks:
     - name: Check if directory exists
       ansible.builtin.stat:
-        path: /var/lib/vz/template/images
+        path: "{{ download_dir }}"
       register: image_dir
 
     - name: creating a dir for download
-      shell: mkdir /var/lib/vz/template/images/
+      shell: mkdir "{{ download_dir }}"
       when: not image_dir.stat.exists
-      
-    - name: Download Debian Cloud Image
+    
+    - name: Check if Cloud image is dowloaded
+      ansible.builtin.stat:
+        path: "{{ download_dir }}/{{ image }}"
+      register: image_path
+
+    - name: Download  Cloud Image
       get_url:
         url: "{{ image_url }}"
-        dest: "/var/lib/vz/template/images/"
+        dest: "{{ download_dir }}"
       register: download_image
+      when: not image_path.stat.exists
       failed_when: download_image is failed
 
     - name: Create VM
       command: >
         qm create {{ vm_id }} --name "{{ vm_name }}" --ostype l26 --cpu host --socket 1
-        --cores 2 --memory 2048 --machine q35 --net0 virtio,bridge={{ interface }},tag={{ vlan_tag }}
+        --cores 4 --memory "{{ ram }}"  --net0 virtio,bridge={{ interface }},tag={{ vlan_tag }}
         --serial0 socket --agent 1
       register: create_vm
       failed_when: create_vm.rc != 0
@@ -41,12 +48,12 @@
 
     - name: Customize Image
       command: >
-        virt-customize -a {{ image_path }} --install qemu-guest-agent,rsync,net-tools
+        virt-customize -a {{ image_path.stat.path }} --install qemu-guest-agent,rsync,net-tools
       register: customize_image
       failed_when: customize_image.rc != 0
 
     - name: Import Disk
-      command: qm importdisk {{ vm_id }} {{ image_path }} local-lvm
+      command: qm importdisk {{ vm_id }} {{ image_path.stat.path }} local-lvm
       register: import_disk
       failed_when: import_disk.rc != 0
 
@@ -61,7 +68,7 @@
       failed_when: set_disk.rc != 0
 
     - name: Resize VM Disk
-      command: qm resize {{ vm_id }} scsi0 10G
+      command: qm resize {{ vm_id }} scsi0 {{ disk_size}}
       register: resize_disk
       failed_when: resize_disk.rc != 0
 
@@ -104,9 +111,15 @@
       command: qm cloudinit update {{ vm_id }}
       register: update_cloudinit
       failed_when: update_cloudinit.rc != 0
+    
+    - name: Copy SSH public key to remote host
+      ansible.builtin.copy:
+        src: /root/.ssh/semaphore.pub
+        dest: /tmp/semaphore.pub
+        mode: '0644'
 
     - name: Upload ssh pubkey 
-      command: qm set {{ vm_id }} --sshkey ~/.ssh/id_rsa.pub
+      command: qm set {{ vm_id }} --sshkey /tmp/semaphore.pub
 
     - name: Show VM Config
       command: qm config {{ vm_id }}
@@ -128,20 +141,28 @@
       command: qm guest exec {{ vm_id }}  -- /bin/bash -c "/usr/bin/curl -fsSL https://pkgs.netbird.io/install.sh | sh"
       register: guest_command_output
       failed_when: guest_command_output.rc != 0
+      tags:
+        - netbird
 
     - name: Run command on the VM via QEMU Guest Agent to create Netbird Peer
       command: qm guest exec {{ vm_id }} -- /bin/bash -c "/usr/bin/netbird up -k {{ setup_key }}"
       register: guest_command_output
       failed_when: guest_command_output.rc != 0
+      tags:
+        - netbird
 
     - name: Run command on the VM via QEMU Guest Agent to check Netbird Status
       command: qm guest exec {{ vm_id }} -- /bin/bash -c "/usr/bin/netbird  status"
       register: guest_command_output
       failed_when: guest_command_output.rc != 0
+      tags:
+        - netbird  
 
     - name: Print the output of Netbird Status and IP address of the interface
       debug:
         msg: "{{ guest_command_output.stdout }}"
+      tags:
+        - netbird
 
           ### ADJUSTING SSH SETTINGS ###
 
@@ -156,7 +177,7 @@
       failed_when: guest_command_output.rc != 0
 
     - name: Enable root login
-      command: qm guest exec {{ vm_id }} -- /bin/bash -c "systemctl restart sshd "
+      command: qm guest exec {{ vm_id }} -- /bin/bash -c "systemctl restart ssh "
       register: guest_command_output
       failed_when: guest_command_output.rc != 0
 
