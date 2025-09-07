@@ -1,0 +1,89 @@
+- name: zabbix proxy creation
+  hosts: Zabbix-proxy
+  gather_facts: true
+  #vars_files: /home/nac/zabbix-restore/zabbix-proxy/vars.yml
+  collections:
+    - community.postgresql.postgresql_user
+
+  tasks:
+
+    - name: backup source.list
+      shell: cp -v /etc/apt/sources.list /etc/apt/sources.list.bkp
+      ignore_errors: true
+
+    - name: Update package list
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - postgresql
+        - sudo
+        - wget
+        - openssl
+        - python3
+      ignore_errors: yes 
+    
+    - name: Creating /home/zabbix
+      shell: mkdir  /home/zabbix 
+      ignore_errors: true
+
+    - name:  Generate PSK key
+      shell: openssl rand -hex 32 > /home/zabbix/secret_proxy.psk
+
+    - name: Set permissions 644 for /home/zabbix/secret_proxy.psk
+      shell: chmod 644 /home/zabbix/secret_proxy.psk
+
+    - name:  Install Zabbix repository
+      shell: wget https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_7.0-2+debian12_all.deb
+
+    - name: Install Zabbix package
+      shell: dpkg -i zabbix-release_7.0-2+debian12_all.deb  && apt update
+
+    - name: installing Zabbix proxy
+      shell: apt install zabbix-proxy-pgsql -y && apt install zabbix-sql-scripts -y 
+
+    - name: Changing ownership of /home/zabbix/secret_proxy.psk 
+      shell: chown zabbix:zabbix /home/zabbix/secret_proxy.psk 
+
+    - name: installing psycopg2
+      shell: apt install python3-psycopg2 -y 
+
+    - name: Create appclient user with SCRAM-hashed password
+      become: yes
+      become_user: postgres
+      command: >
+        psql -c "CREATE USER zabbix  WITH PASSWORD '{{ dbpassword }}' CREATEDB;"
+      ignore_errors: true
+
+    - name: create a database
+      shell: sudo -u postgres createdb -O zabbix zabbix_proxy
+    
+    - name: Import initial schema
+      shell: cat /usr/share/zabbix-sql-scripts/postgresql/proxy.sql | sudo -u zabbix psql zabbix_proxy
+
+    - name: backup default config file of zabbix-proxy
+      shell: mv /etc/zabbix/zabbix_proxy.conf /etc/zabbix/zabbix_proxy.conf.bak
+
+    - name: write hostname using jinja2
+      ansible.builtin.template:
+         src: /tmp/semaphore/repository_1_2/proxy_conf.j2
+         dest: /etc/zabbix/zabbix_proxy.conf
+    
+    - name: Creating a pid file
+      shell: touch /run/zabbix/zabbix_proxy.pid
+
+    - name: restart and enable zabbix-proxy
+      shell: systemctl restart  zabbix-proxy && systemctl enable zabbix-proxy
+
+    - name: Slurp the file
+      slurp:
+        src: /home/zabbix/secret_proxy.psk
+      register: slurped_file
+
+    - name: Print file contents
+      debug:
+        msg:  "PSK keys: {{ slurped_file.content | b64decode }}"
