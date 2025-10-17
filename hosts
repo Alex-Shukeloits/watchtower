@@ -29,25 +29,25 @@ runner=cy-lim-runner
 
 
 [proxmox_server]
-#proxmox-py ansible_host=100.111.125.125
-#proxmox-cde ansible_host=100.111.41.172
-#proxmox-by ansible_host=192.168.99.201
-#proxmox-mt ansible_host=100.111.114.226
-#cyl-lim ansible_host=100.111.194.6
-sandbox-asu-vm1 ansible_host=100.111.183.174 ip_addr=192.168.85.12 vm_id=830 vm_name=bulk-deploy1
-sandbox-asu-vm2 ansible_host=100.111.183.174 ip_addr=192.168.85.13 vm_id=831 vm_name=bulk-deploy2
+#sandbox-asu-vm1 ansible_host=100.111.183.174 ip_addr=192.168.85.12 vm_id=830 vm_name=bulk-deploy1
+#sandbox-asu-vm2 ansible_host=100.111.183.174 ip_addr=192.168.85.13 vm_id=831 vm_name=bulk-deploy2
+my_sandbox ansible_host=192.168.0.100 
 
 [proxmox_server:vars]
-#ip_addr=192.168.78.199
-gateway=192.168.78.254
-vlan_tag=20 
+ip_addr=192.168.0.106
+gateway=192.168.0.1
+vlan_tag=1
 interface=vmbr0 
 ram=4096
 disk_size=20G
-vm_name=cy-lim-runner 
-vm_id=150
-ansible_user=root 
-ansible_ssh_private_key_file=/root/.ssh/semaphore 
+vm_name=zfsvm
+vm_id=556
+ansible_user=root
+root_password=itadmin123
+pubkey_path=~/.ssh/proxmox.pub 
+ansible_ssh_private_key_file=/root/.ssh/proxmox 
+storage=vmdata 
+
 
 [zabbix-proxy]
 hk ansible_host=100.111.157.5 
