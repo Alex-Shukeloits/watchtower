@@ -34,10 +34,20 @@
     - name: Create VM
       command: >
         qm create {{ vm_id }} --name "{{ vm_name }}" --ostype l26 --cpu host --socket 1
-        --cores 4 --memory "{{ ram }}"  --net0 virtio,bridge={{ interface }},tag={{ vlan_tag }}
+        --cores 4 --memory "{{ ram }}"  --net0 virtio,bridge={{ interface }}
         --serial0 socket --agent 1
       register: create_vm
       failed_when: create_vm.rc != 0
+
+    - name: Set VLAN tag for VM network
+      command: >
+        qm set {{ vm_id }} --net0 virtio,bridge={{ interface }},tag={{ vlan_tag }}
+      register: set_vlan
+      failed_when: set_vlan.rc != 0
+      when: vlan_tag is defined
+      tags:
+        - vlan-tag
+
 
     - name: Install libguestfs-tools
       apt:
@@ -184,3 +194,5 @@
     - name: Print the output of Netbird Status and IP address of the interface
       debug:
         msg: "{{ guest_command_output.stdout }}"
+      tags:
+        - netbird
