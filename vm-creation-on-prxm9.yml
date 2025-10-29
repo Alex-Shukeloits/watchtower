@@ -4,7 +4,8 @@
   become: true
   vars_files: /etc/ansible/secret_vars.yml
   vars:
-    image_url: "https://cloud.debian.org/images/cloud/bookworm-backports/latest/debian-12-backports-generic-amd64.qcow2"
+    image_url: "https://fast-mirror.isrc.ac.cn/centos-cloud/centos/7/images/CentOS-7-x86_64-GenericCloud.qcow2"
+    #image_url: "https://cloud.debian.org/images/cloud/bookworm-backports/latest/debian-12-backports-generic-amd64.qcow2"
     download_dir: "/var/lib/vz/template/images/"
     image: "{{ image_url.split('/')[-1] }}"
 
@@ -58,9 +59,23 @@
 
     - name: Customize Image
       command: >
-        virt-customize -a "{{ download_dir }}/{{ image }}" --install qemu-guest-agent,rsync,net-tools
+        virt-customize -a "{{ download_dir }}{{ image }}" --install qemu-guest-agent,rsync,net-tools
+      register: customize_image
+      when: "'debian' in image | lower or 'ubuntu' in image | lower"
+      failed_when: customize_image.rc != 0
+     
+    - name: Customize Image if Centos/Fedora
+      command: >
+        virt-customize -a "{{ download_dir }}/{{ image | trim }}"
+        --firstboot-command "yum update -y"
+        --firstboot-command "yum install -y qemu-guest-agent rsync net-tools"
+        --firstboot-command "systemctl enable qemu-guest-agent"
+        --firstboot-command "systemctl enable rsync"
+        --firstboot-command "sed -i 's/^#*UseDNS.*/UseDNS no/' /etc/ssh/sshd_config"
+      when: "'centos' in image | lower or 'rhel' in image | lower or 'fedora' in image | lower"
       register: customize_image
       failed_when: customize_image.rc != 0
+
 
     - name: Import Disk
       command: qm importdisk {{ vm_id }} {{ image_path.stat.path }} {{ storage }}
