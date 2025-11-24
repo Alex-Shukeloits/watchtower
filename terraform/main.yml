@@ -1,1 +1,37 @@
+resource "proxmox_virtual_environment_vm" "test_vm" {
+  count = 3
+  name      = "vm-${count.index + 1}"
+  node_name = "pve"
+  started   = true
 
+  # Clone from template
+  clone {
+    vm_id = 777  # Your template VM ID
+  }
+
+  cpu {
+    cores = 1
+  }
+
+  memory {
+    dedicated = 1024
+  }
+
+  disk {
+    datastore_id = "local-lvm"
+    interface    = "scsi0"
+    size         = 40
+  }
+
+  network_device {
+    bridge = "vmbr0"
+  }
+
+  initialization {
+    ip_config {
+      ipv4 {
+        address = "dhcp"
+      }
+    }
+  }
+}
