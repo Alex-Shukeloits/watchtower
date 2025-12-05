@@ -4,3 +4,12 @@ Deployment tool: Ansible & Terraform
 
 VMs and VM templates can be created via Ansible.
 Terraform uses created templated.
+
+###################################################
+For terraform:
+
+  terraform plan  -var="vm_count=1"
+  terraform apply  -var="vm_count=1"
+
+#number of VMs needs to be specified in vm_count
+###################################################
