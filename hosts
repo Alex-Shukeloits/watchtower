@@ -1,6 +1,4 @@
 [proxmox_server]
-#sandbox-asu-vm1 ansible_host=100.111.183.174 ip_addr=192.168.85.12 vm_id=830 vm_name=bulk-deploy1
-#sandbox-asu-vm2 ansible_host=100.111.183.174 ip_addr=192.168.85.13 vm_id=831 vm_name=bulk-deploy2
 my_sandbox ansible_host=100.97.185.188 
 
 [proxmox_server:vars]
