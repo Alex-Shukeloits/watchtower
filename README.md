@@ -6,7 +6,7 @@ VMs and VM templates can be created via Ansible.
 Terraform uses created templated.
 
 ###################################################
-For terraform:
+For terraform in terraform dir:
 
   terraform plan  -var="vm_count=1"
   terraform apply  -var="vm_count=1"
