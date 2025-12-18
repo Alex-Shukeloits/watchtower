@@ -1,0 +1,27 @@
+vrrp_instance VI_{{ vrrp_id }} {
+    state {{ state }}
+    interface {{ vip_interface }}
+    virtual_router_id {{ vrrp_id }}
+    priority {{ priority }}
+    advert_int 1
+
+    authentication {
+        auth_type PASS
+        auth_pass supersecret
+    }
+
+    virtual_ipaddress {
+        {{ vip_address }}
+    }
+
+    track_script {
+        chk_haproxy
+    }
+}
+
+vrrp_script chk_haproxy {
+    script "pidof haproxy"
+    interval 2
+    weight -20
+}
+

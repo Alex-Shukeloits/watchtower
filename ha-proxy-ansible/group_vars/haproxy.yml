@@ -1,0 +1,9 @@
+vip_address: 192.168.0.150
+vip_interface: eth0
+vrrp_id: 51
+
+haproxy_frontend_port: 80
+haproxy_backend_servers:
+  - { name: web1, ip: 10.0.0.21, port: 80 }
+  - { name: web2, ip: 10.0.0.22, port: 80 }
+

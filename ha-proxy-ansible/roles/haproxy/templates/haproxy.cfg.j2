@@ -1,0 +1,19 @@
+global
+    daemon
+    maxconn 256
+
+defaults
+    mode http
+    timeout connect 5s
+    timeout client  50s
+    timeout server  50s
+
+frontend http_front
+    bind {{ vip_address }}:{{ haproxy_frontend_port }}
+    default_backend http_back
+
+backend http_back
+{% for srv in haproxy_backend_servers %}
+    server {{ srv.name }} {{ srv.ip }}:{{ srv.port }} check
+{% endfor %}
+
