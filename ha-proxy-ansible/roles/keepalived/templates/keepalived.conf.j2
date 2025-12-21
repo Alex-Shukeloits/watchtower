@@ -22,6 +22,6 @@ vrrp_instance VI_{{ vrrp_id }} {
 vrrp_script chk_haproxy {
     script "pidof haproxy"
     interval 2
-    weight -20
+    weight -2
 }
 
