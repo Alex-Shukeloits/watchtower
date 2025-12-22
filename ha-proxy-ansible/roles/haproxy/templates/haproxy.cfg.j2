@@ -18,7 +18,7 @@ listen stats
         stats enable
         stats uri /haproxy_stats
         stats realm HAProxy\ Statistics
-        stats auth admin:pass123
+        stats auth admin:{{ basic_auth }}
         stats admin if TRUE
 
 backend http_back
