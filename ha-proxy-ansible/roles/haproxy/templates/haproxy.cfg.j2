@@ -12,6 +12,15 @@ frontend http_front
     bind {{ vip_address }}:{{ haproxy_frontend_port }}
     default_backend http_back
 
+listen stats
+        bind 0.0.0.0:8989
+        mode http
+        stats enable
+        stats uri /haproxy_stats
+        stats realm HAProxy\ Statistics
+        stats auth admin:pass123
+        stats admin if TRUE
+
 backend http_back
     balance roundrobin #or other balanicing methods
 {% for srv in haproxy_backend_servers %}
