@@ -5,5 +5,5 @@ lb2 ansible_host=192.168.0.112 state=BACKUP priority=100
 
 [haproxy:vars]
 ansible_user=root
-ansible_ssh_private_key_file=/tmp/proxmox
+#ansible_ssh_private_key_file=/tmp/proxmox
 ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
