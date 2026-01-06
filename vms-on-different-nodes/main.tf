@@ -24,8 +24,8 @@ locals {
     # -------- VM on pve2 --------
     worker1 = {
       node        = "pve2"
-      vm_id       = 300
-      template_id = 255
+      vm_id       = 305
+      template_id = 781
       cpu         = 2
       memory      = 2048
       disk_size   = 32
