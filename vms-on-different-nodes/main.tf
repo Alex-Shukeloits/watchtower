@@ -3,33 +3,33 @@ locals {
     # -------- VMs on pve --------
     master1 = {
       node        = "pve"
-      vm_id       = 200
+      vm_id       = 253
       template_id = 778
       cpu         = 2
       memory      = 2048
       disk_size   = 32
-      ip          = "192.168.0.111"
+      ip          = "192.168.0.119"
     }
 
     master2 = {
       node        = "pve"
-      vm_id       = 201
+      vm_id       = 254
       template_id = 778
       cpu         = 2
       memory      = 4096
       disk_size   = 32
-      ip          = "192.168.0.112"
+      ip          = "192.168.0.120"
     }
 
     # -------- VM on pve2 --------
     worker1 = {
       node        = "pve2"
       vm_id       = 300
-      template_id = 779
+      template_id = 255
       cpu         = 2
       memory      = 2048
       disk_size   = 32
-      ip          = "192.168.0.211"
+      ip          = "192.168.0.121"
     }
   }
 }
